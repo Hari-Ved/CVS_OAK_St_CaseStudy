@@ -1,0 +1,797 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Unity Catalog · PHI Audit Investigator</title>
+<style>
+  :root {
+    --navy:    #0A1628;
+    --teal:    #028090;
+    --seafoam: #00A896;
+    --mint:    #02C39A;
+    --ice:     #EAF6F8;
+    --smoke:   #E2EEF0;
+    --slate:   #64748B;
+    --red:     #E53E3E;
+    --amber:   #D97706;
+    --green:   #059669;
+    --white:   #FFFFFF;
+    --offwhite:#F4FAFB;
+  }
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body { font-family: 'Segoe UI', system-ui, sans-serif; background: var(--offwhite); color: var(--navy); }
+
+  /* ── header ── */
+  .topbar {
+    background: var(--navy);
+    display: flex; align-items: center; gap: 16px;
+    padding: 12px 24px; border-bottom: 3px solid var(--teal);
+  }
+  .topbar-logo { color: var(--teal); font-size: 22px; font-weight: 800; letter-spacing: -0.5px; }
+  .topbar-sub  { color: #7EADB5; font-size: 13px; }
+  .topbar-badge {
+    margin-left: auto; background: var(--red); color: white;
+    font-size: 11px; font-weight: 700; padding: 4px 10px; border-radius: 20px;
+    animation: pulse 2s infinite;
+  }
+  @keyframes pulse { 0%,100%{opacity:1} 50%{opacity:0.6} }
+
+  /* ── layout ── */
+  .layout { display: grid; grid-template-columns: 300px 1fr; height: calc(100vh - 53px); }
+
+  /* ── sidebar ── */
+  .sidebar { background: var(--navy); padding: 0; overflow-y: auto; }
+  .sidebar-section { padding: 16px; border-bottom: 1px solid rgba(255,255,255,0.08); }
+  .sidebar-label { font-size: 10px; font-weight: 700; letter-spacing: 1.5px; color: var(--teal); text-transform: uppercase; margin-bottom: 10px; }
+
+  .filter-row { margin-bottom: 10px; }
+  .filter-row label { font-size: 11px; color: #7EADB5; display: block; margin-bottom: 4px; }
+  .filter-row input, .filter-row select {
+    width: 100%; background: rgba(255,255,255,0.08);
+    border: 1px solid rgba(255,255,255,0.15); color: white;
+    padding: 7px 10px; border-radius: 6px; font-size: 12px;
+  }
+  .filter-row input:focus, .filter-row select:focus {
+    outline: none; border-color: var(--teal);
+  }
+  .filter-row select option { background: var(--navy); }
+
+  .run-btn {
+    width: 100%; padding: 10px; background: var(--teal);
+    color: white; border: none; border-radius: 8px;
+    font-size: 13px; font-weight: 700; cursor: pointer;
+    transition: background 0.2s;
+  }
+  .run-btn:hover { background: var(--seafoam); }
+  .run-btn:disabled { background: #334; cursor: not-allowed; }
+
+  /* incident timeline in sidebar */
+  .timeline-item {
+    display: flex; gap: 10px; padding: 10px 0;
+    border-bottom: 1px solid rgba(255,255,255,0.06);
+    cursor: pointer;
+  }
+  .timeline-item:hover { background: rgba(255,255,255,0.04); margin: 0 -16px; padding: 10px 16px; }
+  .timeline-dot {
+    width: 10px; height: 10px; border-radius: 50%; margin-top: 3px; flex-shrink: 0;
+  }
+  .timeline-time { font-size: 10px; color: #7EADB5; }
+  .timeline-event { font-size: 12px; color: white; }
+  .dot-red    { background: var(--red); box-shadow: 0 0 6px var(--red); }
+  .dot-amber  { background: var(--amber); }
+  .dot-green  { background: var(--green); }
+  .dot-teal   { background: var(--teal); }
+
+  /* ── main content ── */
+  .main { overflow-y: auto; display: flex; flex-direction: column; }
+
+  /* tabs */
+  .tabs { display: flex; background: white; border-bottom: 2px solid var(--smoke); }
+  .tab {
+    padding: 12px 20px; font-size: 13px; font-weight: 600;
+    color: var(--slate); cursor: pointer; border-bottom: 2px solid transparent;
+    margin-bottom: -2px; transition: all 0.15s;
+    user-select: none;
+  }
+  .tab.active { color: var(--teal); border-bottom-color: var(--teal); }
+  .tab:hover:not(.active) { color: var(--navy); }
+
+  .panel { padding: 20px; display: none; flex: 1; }
+  .panel.active { display: block; }
+
+  /* audit results */
+  .results-header {
+    display: flex; align-items: center; gap: 12px;
+    margin-bottom: 16px;
+  }
+  .results-count {
+    background: var(--red); color: white;
+    padding: 3px 10px; border-radius: 20px;
+    font-size: 12px; font-weight: 700;
+  }
+  .results-title { font-size: 15px; font-weight: 700; }
+
+  table { width: 100%; border-collapse: collapse; font-size: 12px; }
+  thead tr { background: var(--navy); color: white; }
+  thead th { padding: 10px 12px; text-align: left; font-weight: 600; font-size: 11px; letter-spacing: 0.5px; }
+  tbody tr { border-bottom: 1px solid var(--smoke); transition: background 0.1s; }
+  tbody tr:hover { background: var(--ice); }
+  tbody td { padding: 9px 12px; }
+  .badge {
+    display: inline-block; padding: 2px 8px; border-radius: 12px;
+    font-size: 10px; font-weight: 700;
+  }
+  .badge-red   { background: #FEE2E2; color: #991B1B; }
+  .badge-amber { background: #FEF3C7; color: #92400E; }
+  .badge-blue  { background: #DBEAFE; color: #1E40AF; }
+  .badge-green { background: #D1FAE5; color: #065F46; }
+
+  .code-chip {
+    background: var(--navy); color: var(--mint);
+    font-family: 'Consolas', monospace; font-size: 10px;
+    padding: 2px 6px; border-radius: 4px;
+  }
+
+  /* ── blast radius card ── */
+  .blast-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 16px; margin-bottom: 24px; }
+  .metric-card {
+    background: white; border-radius: 12px; padding: 20px;
+    box-shadow: 0 2px 8px rgba(0,0,0,0.08);
+    border-top: 4px solid var(--teal);
+  }
+  .metric-card.danger { border-top-color: var(--red); }
+  .metric-card.warn   { border-top-color: var(--amber); }
+  .metric-value { font-size: 32px; font-weight: 800; color: var(--navy); line-height: 1.1; }
+  .metric-label { font-size: 12px; color: var(--slate); margin-top: 4px; }
+  .metric-sub   { font-size: 11px; color: var(--red); margin-top: 6px; font-weight: 600; }
+
+  /* ── column masking demo ── */
+  .masking-demo { background: white; border-radius: 12px; padding: 20px; box-shadow: 0 2px 8px rgba(0,0,0,0.08); }
+  .masking-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 16px; }
+  .masking-title { font-size: 15px; font-weight: 700; }
+  .toggle-row { display: flex; gap: 8px; align-items: center; font-size: 13px; }
+  .toggle {
+    position: relative; width: 48px; height: 26px; cursor: pointer;
+  }
+  .toggle input { opacity: 0; width: 0; height: 0; }
+  .slider {
+    position: absolute; inset: 0; background: #ccc; border-radius: 26px; transition: 0.3s;
+  }
+  .slider:before {
+    content: ''; position: absolute;
+    width: 20px; height: 20px; left: 3px; top: 3px;
+    background: white; border-radius: 50%; transition: 0.3s;
+  }
+  input:checked + .slider { background: var(--teal); }
+  input:checked + .slider:before { transform: translateX(22px); }
+
+  .phi-table { width: 100%; border-collapse: collapse; font-size: 12px; }
+  .phi-table th { background: var(--ice); padding: 8px 12px; text-align: left; font-size: 11px; font-weight: 700; color: var(--slate); }
+  .phi-table td { padding: 8px 12px; border-bottom: 1px solid var(--smoke); }
+  .phi-val { font-family: 'Consolas', monospace; }
+  .phi-masked { color: var(--slate); background: var(--smoke); padding: 2px 6px; border-radius: 4px; font-family: 'Consolas', monospace; font-size: 11px; }
+  .phi-exposed { color: var(--red); font-family: 'Consolas', monospace; font-weight: 600; }
+
+  /* ── access map ── */
+  .access-map { display: grid; grid-template-columns: repeat(3, 1fr); gap: 16px; }
+  .access-tier {
+    border-radius: 12px; padding: 16px;
+    border: 2px solid transparent;
+  }
+  .tier-header { font-size: 13px; font-weight: 700; margin-bottom: 8px; }
+  .tier-item { font-size: 11px; color: var(--slate); margin-bottom: 4px; }
+  .tier-red   { background: #FEF2F2; border-color: var(--red); }
+  .tier-amber { background: #FFFBEB; border-color: var(--amber); }
+  .tier-teal  { background: var(--ice); border-color: var(--teal); }
+
+  /* ── query panel ── */
+  .query-editor {
+    background: var(--navy); border-radius: 12px; padding: 20px;
+    font-family: 'Consolas', monospace; font-size: 12.5px;
+    color: #A8D5DC; line-height: 1.8; margin-bottom: 16px;
+    position: relative;
+  }
+  .query-line-kw { color: #569CD6; }
+  .query-line-str { color: #CE9178; }
+  .query-line-fn  { color: #DCDCAA; }
+  .query-line-cmt { color: #6A9955; }
+  .query-line-num { color: #B5CEA8; }
+  .query-copy-btn {
+    position: absolute; top: 12px; right: 12px;
+    background: rgba(255,255,255,0.1); border: none;
+    color: #7EADB5; padding: 5px 10px; border-radius: 6px;
+    font-size: 11px; cursor: pointer; transition: all 0.2s;
+  }
+  .query-copy-btn:hover { background: var(--teal); color: white; }
+
+  /* loading state */
+  .loading {
+    display: flex; align-items: center; gap: 10px;
+    color: var(--teal); font-size: 13px; padding: 40px 0;
+  }
+  .spinner {
+    width: 20px; height: 20px;
+    border: 3px solid rgba(2,128,144,0.2);
+    border-top-color: var(--teal);
+    border-radius: 50%;
+    animation: spin 0.8s linear infinite;
+  }
+  @keyframes spin { to { transform: rotate(360deg); } }
+
+  .empty { color: var(--slate); font-size: 13px; padding: 40px; text-align: center; }
+
+  /* ── jit panel ── */
+  .jit-flow { display: flex; gap: 0; align-items: stretch; margin-bottom: 24px; overflow: hidden; border-radius: 12px; box-shadow: 0 2px 8px rgba(0,0,0,0.08); }
+  .jit-step {
+    flex: 1; padding: 20px; background: white; position: relative;
+    display: flex; flex-direction: column; align-items: center; text-align: center;
+  }
+  .jit-step:not(:last-child)::after {
+    content: '→'; position: absolute; right: -14px; top: 50%;
+    transform: translateY(-50%); font-size: 20px; color: var(--teal);
+    z-index: 1; background: white; width: 28px; text-align: center;
+  }
+  .jit-icon { font-size: 28px; margin-bottom: 8px; }
+  .jit-title { font-size: 12px; font-weight: 700; color: var(--navy); margin-bottom: 4px; }
+  .jit-desc  { font-size: 11px; color: var(--slate); }
+  .jit-time  { margin-top: 6px; font-size: 10px; font-weight: 700; color: var(--teal); background: var(--ice); padding: 2px 8px; border-radius: 10px; }
+
+  .scrollable { overflow-x: auto; }
+</style>
+</head>
+<body>
+
+<div class="topbar">
+  <div>
+    <div class="topbar-logo">Unity Catalog · PHI Audit Investigator</div>
+    <div class="topbar-sub">Oak Street Health · system.access.audit · Azure Databricks</div>
+  </div>
+  <div class="topbar-badge">🔴 INCIDENT ACTIVE</div>
+</div>
+
+<div class="layout">
+
+  <!-- SIDEBAR -->
+  <div class="sidebar">
+    <div class="sidebar-section">
+      <div class="sidebar-label">Investigation Filters</div>
+      <div class="filter-row">
+        <label>User Identity</label>
+        <input id="f-user" type="text" value="dev.user@oakst.com" placeholder="user@oakst.com">
+      </div>
+      <div class="filter-row">
+        <label>Time Window Start</label>
+        <input id="f-start" type="text" value="2025-03-13 08:00">
+      </div>
+      <div class="filter-row">
+        <label>Time Window End</label>
+        <input id="f-end" type="text" value="2025-03-13 09:30">
+      </div>
+      <div class="filter-row">
+        <label>Action Filter</label>
+        <select id="f-action">
+          <option value="all">All Actions</option>
+          <option value="phi">PHI Table Reads Only</option>
+          <option value="admin">Admin Actions</option>
+        </select>
+      </div>
+      <button class="run-btn" id="run-btn" onclick="runInvestigation()">
+        ▶  Run Audit Query
+      </button>
+    </div>
+
+    <div class="sidebar-section">
+      <div class="sidebar-label">Incident Timeline</div>
+      <div class="timeline-item" onclick="switchTab('audit')">
+        <div class="timeline-dot dot-red"></div>
+        <div>
+          <div class="timeline-time">08:43 AM</div>
+          <div class="timeline-event">Audit alert fired — PHI table access by unauthorized user</div>
+        </div>
+      </div>
+      <div class="timeline-item" onclick="switchTab('blast')">
+        <div class="timeline-dot dot-red"></div>
+        <div>
+          <div class="timeline-time">08:44 AM</div>
+          <div class="timeline-event">47,312 patient records exposed — member_records table</div>
+        </div>
+      </div>
+      <div class="timeline-item" onclick="switchTab('blast')">
+        <div class="timeline-dot dot-amber"></div>
+        <div>
+          <div class="timeline-time">08:45 AM</div>
+          <div class="timeline-event">Root cause: group membership to pii_readers not revoked after role change</div>
+        </div>
+      </div>
+      <div class="timeline-item" onclick="switchTab('masking')">
+        <div class="timeline-dot dot-teal"></div>
+        <div>
+          <div class="timeline-time">09:12 AM</div>
+          <div class="timeline-event">Column masking policy deployed — PHI now redacted for non-authorized groups</div>
+        </div>
+      </div>
+      <div class="timeline-item" onclick="switchTab('jit')">
+        <div class="timeline-dot dot-green"></div>
+        <div>
+          <div class="timeline-time">09:30 AM</div>
+          <div class="timeline-event">JIT access workflow enabled — all pii_readers access now time-bounded</div>
+        </div>
+      </div>
+    </div>
+
+    <div class="sidebar-section">
+      <div class="sidebar-label">HIPAA Safeguards Triggered</div>
+      <div style="font-size:11px; color:#7EADB5; line-height:1.8;">
+        §164.312(b) — Audit controls<br>
+        §164.312(a)(2)(i) — Unique user ID<br>
+        §164.312(a)(2)(iii) — Automatic logoff<br>
+        §164.308(a)(3)(ii)(C) — Access termination
+      </div>
+    </div>
+  </div>
+
+  <!-- MAIN -->
+  <div class="main">
+    <div class="tabs">
+      <div class="tab active" id="tab-audit" onclick="switchTab('audit')">🔍 Audit Logs</div>
+      <div class="tab" id="tab-blast" onclick="switchTab('blast')">💥 Blast Radius</div>
+      <div class="tab" id="tab-masking" onclick="switchTab('masking')">🔒 Column Masking</div>
+      <div class="tab" id="tab-access" onclick="switchTab('access')">👥 Access Tiers</div>
+      <div class="tab" id="tab-jit" onclick="switchTab('jit')">⏱ JIT Access</div>
+      <div class="tab" id="tab-query" onclick="switchTab('query')">📋 SQL Reference</div>
+    </div>
+
+    <!-- AUDIT LOGS PANEL -->
+    <div class="panel active" id="panel-audit">
+      <div id="audit-state">
+        <div class="empty">
+          Press <strong>▶ Run Audit Query</strong> in the sidebar to investigate the incident.
+        </div>
+      </div>
+    </div>
+
+    <!-- BLAST RADIUS PANEL -->
+    <div class="panel" id="panel-blast">
+      <div class="blast-grid">
+        <div class="metric-card danger">
+          <div class="metric-value">47,312</div>
+          <div class="metric-label">Patient Records Exposed</div>
+          <div class="metric-sub">PHI: name, DOB, member_id, dx_codes</div>
+        </div>
+        <div class="metric-card warn">
+          <div class="metric-value">8 min</div>
+          <div class="metric-label">Active Query Duration</div>
+          <div class="metric-sub" style="color:var(--amber)">Full table scan executed</div>
+        </div>
+        <div class="metric-card">
+          <div class="metric-value" style="color:var(--teal)">1</div>
+          <div class="metric-label">User Involved</div>
+          <div class="metric-sub" style="color:var(--green)">No evidence of data exfiltration</div>
+        </div>
+      </div>
+      <div class="masking-demo">
+        <div style="font-size:15px; font-weight:700; margin-bottom:16px;">Root Cause Analysis</div>
+        <div style="display:grid; grid-template-columns:1fr 1fr; gap:16px;">
+          <div>
+            <div style="font-size:12px; font-weight:700; color:var(--red); margin-bottom:8px;">⚠ How They Got Access</div>
+            <div style="font-size:12px; line-height:1.8; color:var(--slate);">
+              User was previously a senior analyst in the PHI Access group (<code>pii_readers</code>).
+              Role changed to <em>Data Engineer</em> 3 months ago — but group membership was never revoked.
+              Standing permission persisted silently.
+            </div>
+            <div style="margin-top:12px; background:var(--ice); padding:12px; border-radius:8px; font-family:Consolas; font-size:11px; color:var(--navy);">
+              SELECT * FROM system.information_schema.grants<br>
+              WHERE grantee = 'pii_readers'<br>
+              &nbsp;&nbsp;AND principal = '<a href="/cdn-cgi/l/email-protection" class="__cf_email__" data-cfemail="a0c4c5d68ed5d3c5d2e0cfc1cbd3d48ec3cfcd">[email&#160;protected]</a>'<br>
+              -- Returns: GRANT SELECT ON clinical.*<br>
+              -- Granted: 2024-09-15 (role change: 2024-09-12)
+            </div>
+          </div>
+          <div>
+            <div style="font-size:12px; font-weight:700; color:var(--green); margin-bottom:8px;">✓ What We Know (Limiting Factors)</div>
+            <div style="font-size:12px; line-height:1.8; color:var(--slate);">
+              • No COPY INTO or download commands in audit log<br>
+              • Single notebook session, single workspace<br>
+              • No external storage writes detected<br>
+              • User had legitimate business intent (ad-hoc exploration)<br>
+              • Incident was accidental, not malicious
+            </div>
+            <div style="margin-top:12px;">
+              <div style="font-size:11px; font-weight:700; color:var(--slate); margin-bottom:6px;">HIPAA BREACH ASSESSMENT</div>
+              <div style="display:flex; gap:8px; align-items:center;">
+                <span class="badge badge-amber">PROBABLE BREACH</span>
+                <span style="font-size:11px; color:var(--slate)">Notify compliance team for §164.408 evaluation</span>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- COLUMN MASKING PANEL -->
+    <div class="panel" id="panel-masking">
+      <div class="masking-demo">
+        <div class="masking-header">
+          <div class="masking-title">oak_health.clinical.member_records — Column Masking Demo</div>
+          <div class="toggle-row">
+            <span style="font-size:12px; color:var(--slate)">Non-authorized view</span>
+            <label class="toggle">
+              <input type="checkbox" id="maskToggle" onchange="toggleMask()">
+              <span class="slider"></span>
+            </label>
+            <span style="font-size:12px; color:var(--slate)">pii_readers group</span>
+          </div>
+        </div>
+        <div class="scrollable">
+          <table class="phi-table" id="phi-table">
+            <thead>
+              <tr>
+                <th>member_id</th>
+                <th>full_name</th>
+                <th>date_of_birth</th>
+                <th>email</th>
+                <th>primary_dx_code</th>
+                <th>payer_id</th>
+              </tr>
+            </thead>
+            <tbody id="phi-tbody"></tbody>
+          </table>
+        </div>
+        <div style="margin-top:16px; background:var(--navy); border-radius:8px; padding:16px;">
+          <div style="font-size:11px; font-weight:700; color:var(--teal); margin-bottom:8px;">MASKING FUNCTION (Unity Catalog)</div>
+          <pre style="font-family:Consolas; font-size:11px; color:#A8D5DC; line-height:1.8;">CREATE OR REPLACE FUNCTION oak_health.security.mask_phi(value STRING)
+  RETURNS STRING
+  RETURN CASE
+    WHEN is_member('pii_readers') THEN value
+    ELSE CONCAT('REDACTED-', SUBSTR(SHA2(value, 256), 1, 8))
+  END;
+
+ALTER TABLE oak_health.clinical.member_records
+  ALTER COLUMN full_name      SET MASK oak_health.security.mask_phi;
+  ALTER COLUMN date_of_birth  SET MASK oak_health.security.mask_phi;
+  ALTER COLUMN email          SET MASK oak_health.security.mask_phi;</pre>
+        </div>
+      </div>
+    </div>
+
+    <!-- ACCESS TIERS PANEL -->
+    <div class="panel" id="panel-access">
+      <div class="masking-demo" style="margin-bottom:16px;">
+        <div style="font-size:15px; font-weight:700; margin-bottom:16px;">Tiered Access Model — Oak Street Health</div>
+        <div class="access-map">
+          <div class="access-tier tier-red">
+            <div class="tier-header" style="color:var(--red)">🔴 pii_readers</div>
+            <div class="tier-item">• Full PHI access: name, DOB, email, DX codes</div>
+            <div class="tier-item">• Requires: manager approval + IT ticket</div>
+            <div class="tier-item">• Annual HIPAA recertification required</div>
+            <div class="tier-item">• Expires in 24-48h (JIT model)</div>
+            <div class="tier-item" style="margin-top:8px; font-weight:700; color:var(--red)">~15 active users</div>
+          </div>
+          <div class="access-tier tier-amber">
+            <div class="tier-header" style="color:var(--amber)">🟡 phi_analysts</div>
+            <div class="tier-item">• De-identified data only</div>
+            <div class="tier-item">• Masked: name, DOB, email</div>
+            <div class="tier-item">• Visible: aggregates, counts, trends</div>
+            <div class="tier-item">• Default for all analysts</div>
+            <div class="tier-item" style="margin-top:8px; font-weight:700; color:var(--amber)">~120 active users</div>
+          </div>
+          <div class="access-tier tier-teal">
+            <div class="tier-header" style="color:var(--teal)">🔵 data_engineers</div>
+            <div class="tier-item">• Schema + metadata access</div>
+            <div class="tier-item">• No row-level data in prod</div>
+            <div class="tier-item">• Full access in dev/staging (synthetic data)</div>
+            <div class="tier-item">• Can deploy pipelines, not query PHI</div>
+            <div class="tier-item" style="margin-top:8px; font-weight:700; color:var(--teal)">~40 active users</div>
+          </div>
+        </div>
+      </div>
+      <div class="masking-demo">
+        <div style="font-size:15px; font-weight:700; margin-bottom:16px;">Quarterly Access Review Workflow</div>
+        <div style="display:grid; grid-template-columns:repeat(4,1fr); gap:12px;">
+          <div style="background:var(--ice); border-radius:8px; padding:14px; text-align:center;">
+            <div style="font-size:22px; margin-bottom:6px;">📋</div>
+            <div style="font-size:12px; font-weight:700; margin-bottom:4px;">Export Grants</div>
+            <div style="font-size:11px; color:var(--slate)">Pull all Unity Catalog grants via API</div>
+          </div>
+          <div style="background:var(--ice); border-radius:8px; padding:14px; text-align:center;">
+            <div style="font-size:22px; margin-bottom:6px;">👤</div>
+            <div style="font-size:12px; font-weight:700; margin-bottom:4px;">Owner Review</div>
+            <div style="font-size:11px; color:var(--slate)">Data owners certify each access grant</div>
+          </div>
+          <div style="background:var(--ice); border-radius:8px; padding:14px; text-align:center;">
+            <div style="font-size:22px; margin-bottom:6px;">✂️</div>
+            <div style="font-size:12px; font-weight:700; margin-bottom:4px;">Revoke Stale</div>
+            <div style="font-size:11px; color:var(--slate)">Auto-revoke uncertified access in 7 days</div>
+          </div>
+          <div style="background:var(--ice); border-radius:8px; padding:14px; text-align:center;">
+            <div style="font-size:22px; margin-bottom:6px;">📊</div>
+            <div style="font-size:12px; font-weight:700; margin-bottom:4px;">Audit Report</div>
+            <div style="font-size:11px; color:var(--slate)">CISO report with access delta vs last quarter</div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- JIT ACCESS PANEL -->
+    <div class="panel" id="panel-jit">
+      <div class="masking-demo" style="margin-bottom:16px;">
+        <div style="font-size:15px; font-weight:700; margin-bottom:16px;">Just-in-Time Access — How It Works</div>
+        <div class="jit-flow">
+          <div class="jit-step">
+            <div class="jit-icon">🙋</div>
+            <div class="jit-title">User Requests</div>
+            <div class="jit-desc">Submits ServiceNow ticket with business justification + data scope</div>
+            <div class="jit-time">t=0</div>
+          </div>
+          <div class="jit-step">
+            <div class="jit-icon">👔</div>
+            <div class="jit-title">Manager Approves</div>
+            <div class="jit-desc">Email approval workflow. Slack notification to data governance team</div>
+            <div class="jit-time">~2h SLA</div>
+          </div>
+          <div class="jit-step">
+            <div class="jit-icon">🔑</div>
+            <div class="jit-title">Access Granted</div>
+            <div class="jit-desc">Unity Catalog GRANT executed via API. Scoped to specific tables only</div>
+            <div class="jit-time">Automated</div>
+          </div>
+          <div class="jit-step">
+            <div class="jit-icon">⏰</div>
+            <div class="jit-title">Auto-Revoke</div>
+            <div class="jit-desc">Access expires 24-48h after grant. REVOKE executed automatically</div>
+            <div class="jit-time">T+24h / T+48h</div>
+          </div>
+          <div class="jit-step">
+            <div class="jit-icon">📝</div>
+            <div class="jit-title">Audit Trail</div>
+            <div class="jit-desc">Full log: request, approval, grant, revoke — attached to original ticket</div>
+            <div class="jit-time">Permanent</div>
+          </div>
+        </div>
+      </div>
+      <div class="masking-demo">
+        <div style="font-size:15px; font-weight:700; margin-bottom:12px;">Why This Prevents Today's Incident</div>
+        <div style="display:grid; grid-template-columns:1fr 1fr; gap:16px;">
+          <div style="background:#FEF2F2; border-radius:8px; padding:14px; border-left:4px solid var(--red);">
+            <div style="font-size:12px; font-weight:700; color:var(--red); margin-bottom:8px;">❌ Without JIT (today's state)</div>
+            <div style="font-size:12px; color:var(--slate); line-height:1.7;">
+              User joined pii_readers group → changed roles 3 months later →
+              <strong>group membership never revoked</strong> → Standing access persists →
+              Accidental query exposes 47K patient records.
+            </div>
+          </div>
+          <div style="background:#D1FAE5; border-radius:8px; padding:14px; border-left:4px solid var(--green);">
+            <div style="font-size:12px; font-weight:700; color:var(--green); margin-bottom:8px;">✓ With JIT (future state)</div>
+            <div style="font-size:12px; color:var(--slate); line-height:1.7;">
+              User requests PHI access → gets 24h grant → access auto-revokes →
+              <strong>zero standing permissions</strong> → Even if user forgets to request revoke,
+              system enforces it automatically.
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- SQL REFERENCE PANEL -->
+    <div class="panel" id="panel-query">
+      <div style="display:grid; gap:16px;">
+        <div class="query-editor">
+          <button class="query-copy-btn" onclick="copyQuery(0)">Copy</button>
+          <div><span class="query-line-cmt">-- 1. Reconstruct what was accessed</span></div>
+          <div><span class="query-line-kw">SELECT</span> user_identity.email, action_name,</div>
+          <div>&nbsp;&nbsp;request_params.table_full_name,</div>
+          <div>&nbsp;&nbsp;request_params.query_text,</div>
+          <div>&nbsp;&nbsp;event_time</div>
+          <div><span class="query-line-kw">FROM</span>   system.access.audit</div>
+          <div><span class="query-line-kw">WHERE</span>  user_identity.email = <span class="query-line-str">'<a href="/cdn-cgi/l/email-protection" class="__cf_email__" data-cfemail="157170633b60667067557a747e66613b767a78">[email&#160;protected]</a>'</span></div>
+          <div>&nbsp;&nbsp;<span class="query-line-kw">AND</span>  event_time <span class="query-line-kw">BETWEEN</span> <span class="query-line-str">'2025-03-13 08:00'</span> <span class="query-line-kw">AND</span> <span class="query-line-str">'2025-03-13 09:30'</span></div>
+          <div>&nbsp;&nbsp;<span class="query-line-kw">AND</span>  action_name <span class="query-line-kw">IN</span> (<span class="query-line-str">'commandSubmit'</span>, <span class="query-line-str">'getTable'</span>, <span class="query-line-str">'readTable'</span>)</div>
+          <div><span class="query-line-kw">ORDER BY</span> event_time <span class="query-line-kw">DESC</span>;</div>
+        </div>
+        <div class="query-editor">
+          <button class="query-copy-btn" onclick="copyQuery(1)">Copy</button>
+          <div><span class="query-line-cmt">-- 2. Check PHI table access by non-authorized users (runs every 6h)</span></div>
+          <div><span class="query-line-kw">SELECT</span> a.user_identity.email, <span class="query-line-fn">COUNT</span>(*) <span class="query-line-kw">AS</span> access_count</div>
+          <div><span class="query-line-kw">FROM</span> system.access.audit a</div>
+          <div><span class="query-line-kw">WHERE</span> a.request_params.table_full_name <span class="query-line-kw">LIKE</span> <span class="query-line-str">'oak_health.clinical.%'</span></div>
+          <div>&nbsp;&nbsp;<span class="query-line-kw">AND</span> event_time > <span class="query-line-fn">DATEADD</span>(hour, -<span class="query-line-num">6</span>, <span class="query-line-fn">CURRENT_TIMESTAMP</span>)</div>
+          <div>&nbsp;&nbsp;<span class="query-line-kw">AND</span> a.user_identity.email <span class="query-line-kw">NOT IN</span> (</div>
+          <div>&nbsp;&nbsp;&nbsp;&nbsp;<span class="query-line-kw">SELECT</span> member <span class="query-line-kw">FROM</span> system.access.group_members</div>
+          <div>&nbsp;&nbsp;&nbsp;&nbsp;<span class="query-line-kw">WHERE</span> group_name = <span class="query-line-str">'pii_readers'</span>)</div>
+          <div><span class="query-line-kw">GROUP BY</span> <span class="query-line-num">1</span> <span class="query-line-kw">HAVING</span> access_count > <span class="query-line-num">0</span>;</div>
+          <div><span class="query-line-cmt">-- Alert fires if any rows returned</span></div>
+        </div>
+        <div class="query-editor">
+          <button class="query-copy-btn" onclick="copyQuery(2)">Copy</button>
+          <div><span class="query-line-cmt">-- 3. Deploy column masking on PHI fields</span></div>
+          <div><span class="query-line-kw">CREATE OR REPLACE FUNCTION</span> oak_health.security.<span class="query-line-fn">mask_phi</span>(value <span class="query-line-kw">STRING</span>)</div>
+          <div>&nbsp;&nbsp;<span class="query-line-kw">RETURNS STRING</span></div>
+          <div>&nbsp;&nbsp;<span class="query-line-kw">RETURN CASE</span></div>
+          <div>&nbsp;&nbsp;&nbsp;&nbsp;<span class="query-line-kw">WHEN</span> <span class="query-line-fn">is_member</span>(<span class="query-line-str">'pii_readers'</span>) <span class="query-line-kw">THEN</span> value</div>
+          <div>&nbsp;&nbsp;&nbsp;&nbsp;<span class="query-line-kw">ELSE</span> <span class="query-line-fn">CONCAT</span>(<span class="query-line-str">'REDACTED-'</span>, <span class="query-line-fn">SUBSTR</span>(<span class="query-line-fn">SHA2</span>(value, <span class="query-line-num">256</span>), <span class="query-line-num">1</span>, <span class="query-line-num">8</span>))</div>
+          <div>&nbsp;&nbsp;<span class="query-line-kw">END</span>;</div>
+          <br>
+          <div><span class="query-line-kw">ALTER TABLE</span> oak_health.clinical.member_records</div>
+          <div>&nbsp;&nbsp;<span class="query-line-kw">ALTER COLUMN</span> full_name     <span class="query-line-kw">SET MASK</span> oak_health.security.mask_phi</div>
+          <div>&nbsp;&nbsp;<span class="query-line-kw">ALTER COLUMN</span> date_of_birth <span class="query-line-kw">SET MASK</span> oak_health.security.mask_phi</div>
+          <div>&nbsp;&nbsp;<span class="query-line-kw">ALTER COLUMN</span> email         <span class="query-line-kw">SET MASK</span> oak_health.security.mask_phi;</div>
+        </div>
+      </div>
+    </div>
+
+  </div>
+</div>
+
+<script data-cfasync="false" src="/cdn-cgi/scripts/5c5dd728/cloudflare-static/email-decode.min.js"></script><script>
+// ── tab switcher ──────────────────────────────────────────────────
+function switchTab(name) {
+  document.querySelectorAll('.tab').forEach(t => t.classList.remove('active'));
+  document.querySelectorAll('.panel').forEach(p => p.classList.remove('active'));
+  document.getElementById('tab-' + name).classList.add('active');
+  document.getElementById('panel-' + name).classList.add('active');
+}
+
+// ── fake audit data ───────────────────────────────────────────────
+const auditRows = [
+  { time: "08:43:12", action: "readTable",      table: "oak_health.clinical.member_records", rows: "47,312", sensitive: true,  note: "Full table scan — SELECT *" },
+  { time: "08:42:58", action: "commandSubmit",   table: "oak_health.clinical.member_records", rows: "–",      sensitive: true,  note: "SELECT * FROM member_records LIMIT 50000" },
+  { time: "08:41:03", action: "getTable",        table: "oak_health.clinical.member_records", rows: "–",      sensitive: true,  note: "Schema inspection" },
+  { time: "08:40:50", action: "commandSubmit",   table: "oak_health.analytics.claims_summary", rows: "823",   sensitive: false, note: "Normal analytics query" },
+  { time: "08:39:22", action: "runNotebook",     table: "–",                                   rows: "–",      sensitive: false, note: "Notebook: /Shared/PHI_Analysis" },
+  { time: "08:38:55", action: "createToken",     table: "–",                                   rows: "–",      sensitive: false, note: "PAT token created (scope: SQL)" },
+];
+
+function runInvestigation() {
+  const btn = document.getElementById('run-btn');
+  btn.disabled = true;
+  btn.textContent = '⏳ Querying system.access.audit...';
+  const stateEl = document.getElementById('audit-state');
+  stateEl.innerHTML = '<div class="loading"><div class="spinner"></div>Executing audit query against Unity Catalog system tables...</div>';
+
+  setTimeout(() => {
+    btn.disabled = false;
+    btn.textContent = '▶  Run Audit Query';
+    renderAuditResults();
+  }, 1400);
+}
+
+function renderAuditResults() {
+  const html = `
+    <div class="results-header">
+      <div class="results-title">Audit Results — dev.user@oakst.com</div>
+      <span class="results-count">${auditRows.length} events found</span>
+      <span class="badge badge-red" style="margin-left:4px;">⚠ 3 PHI Access Events</span>
+    </div>
+    <div class="scrollable">
+    <table>
+      <thead>
+        <tr>
+          <th>EVENT TIME</th>
+          <th>ACTION</th>
+          <th>TABLE</th>
+          <th>ROWS</th>
+          <th>SENSITIVITY</th>
+          <th>QUERY NOTE</th>
+        </tr>
+      </thead>
+      <tbody>
+        ${auditRows.map(r => `
+          <tr>
+            <td><span class="code-chip">${r.time}</span></td>
+            <td><code style="font-size:11px;">${r.action}</code></td>
+            <td style="font-family:Consolas; font-size:11px;">${r.table}</td>
+            <td style="font-weight:${r.sensitive?700:400}; color:${r.sensitive&&r.rows!=='–'?'var(--red)':'var(--slate)'};">${r.rows}</td>
+            <td>${r.sensitive ? '<span class="badge badge-red">PHI</span>' : '<span class="badge badge-green">Public</span>'}</td>
+            <td style="color:var(--slate); font-size:11px;">${r.note}</td>
+          </tr>
+        `).join('')}
+      </tbody>
+    </table>
+    </div>
+    <div style="margin-top:16px; background:var(--navy); border-radius:8px; padding:14px; color:var(--mint); font-size:12px; line-height:1.8;">
+      <strong>🔎 Investigation Summary:</strong> User executed a full table scan on <code>oak_health.clinical.member_records</code> at 08:43 AM,
+      returning 47,312 rows of PHI. Access was gained via persistent <code>pii_readers</code> group membership not revoked after role change.
+      No evidence of data exfiltration. Immediate action: revoke group membership, notify compliance, deploy column masking.
+    </div>`;
+  document.getElementById('audit-state').innerHTML = html;
+}
+
+// ── PHI masking table ─────────────────────────────────────────────
+const phiData = [
+  { id: "MBR-00291847", name: "Sarah M. Johnson",    dob: "1982-04-12", email: "sarah.johnson@email.com",  dx: "Z00.00", payer: "BCBS-IL" },
+  { id: "MBR-00293122", name: "Robert Chen",         dob: "1965-11-29", email: "rchen1965@gmail.com",      dx: "E11.9",  payer: "Aetna" },
+  { id: "MBR-00298774", name: "Maria Elena Reyes",   dob: "1975-07-03", email: "mreyes@work.net",          dx: "I10",    payer: "UHC" },
+  { id: "MBR-00301933", name: "James D. Williams",   dob: "1991-01-18", email: "jwilliams91@yahoo.com",    dx: "J45.20", payer: "Cigna" },
+  { id: "MBR-00304412", name: "Aisha Kamara",        dob: "1988-09-07", email: "akamara@outlook.com",      dx: "F32.1",  payer: "BCBS-IL" },
+];
+
+function mask(v) {
+  return `<span class="phi-masked">REDACTED-${v.substring(0,4).toUpperCase()+'3F8A'}</span>`;
+}
+function expose(v) {
+  return `<span class="phi-exposed">${v}</span>`;
+}
+
+function renderPhiTable(showRaw) {
+  const rows = phiData.map(r => `<tr>
+    <td class="phi-val">${r.id}</td>
+    <td>${showRaw ? expose(r.name) : mask(r.name)}</td>
+    <td>${showRaw ? expose(r.dob) : mask(r.dob)}</td>
+    <td>${showRaw ? expose(r.email) : mask(r.email)}</td>
+    <td>${r.dx}</td>
+    <td>${r.payer}</td>
+  </tr>`).join('');
+  document.getElementById('phi-tbody').innerHTML = rows;
+}
+
+function toggleMask() {
+  const on = document.getElementById('maskToggle').checked;
+  renderPhiTable(on);
+}
+
+// ── copy queries ──────────────────────────────────────────────────
+const queries = [
+  `SELECT user_identity.email, action_name,\n  request_params.table_full_name,\n  request_params.query_text,\n  event_time\nFROM   system.access.audit\nWHERE  user_identity.email = 'dev.user@oakst.com'\n  AND  event_time BETWEEN '2025-03-13 08:00' AND '2025-03-13 09:30'\n  AND  action_name IN ('commandSubmit', 'getTable', 'readTable')\nORDER BY event_time DESC;`,
+  `SELECT a.user_identity.email, COUNT(*) AS access_count\nFROM system.access.audit a\nWHERE a.request_params.table_full_name LIKE 'oak_health.clinical.%'\n  AND event_time > DATEADD(hour, -6, CURRENT_TIMESTAMP)\n  AND a.user_identity.email NOT IN (\n    SELECT member FROM system.access.group_members\n    WHERE group_name = 'pii_readers')\nGROUP BY 1 HAVING access_count > 0;`,
+  `CREATE OR REPLACE FUNCTION oak_health.security.mask_phi(value STRING)\n  RETURNS STRING\n  RETURN CASE\n    WHEN is_member('pii_readers') THEN value\n    ELSE CONCAT('REDACTED-', SUBSTR(SHA2(value, 256), 1, 8))\n  END;\n\nALTER TABLE oak_health.clinical.member_records\n  ALTER COLUMN full_name     SET MASK oak_health.security.mask_phi\n  ALTER COLUMN date_of_birth SET MASK oak_health.security.mask_phi\n  ALTER COLUMN email         SET MASK oak_health.security.mask_phi;`
+];
+function copyQuery(i) {
+  navigator.clipboard.writeText(queries[i]).catch(() => {});
+  const btns = document.querySelectorAll('.query-copy-btn');
+  btns[i].textContent = '✓ Copied!';
+  setTimeout(() => btns[i].textContent = 'Copy', 1500);
+}
+
+// ── init ─────────────────────────────────────────────────────────
+renderPhiTable(false);
+
+// ── watermark footer ─────────────────────────────────────────────
+// Injected via JS and split character-by-character so it cannot
+// be selected, drag-copied, or easily scraped from source.
+(function buildWatermark() {
+  const segments = [
+    { t: "© ", accent: true },
+    { t: "Created by ", accent: false },
+    { t: "Harikrupa Vedere", accent: true },
+    { t: " — ", accent: false },
+    { t: "CVS Health / Oak Street Health", accent: false },
+    { t: " | ", accent: false },
+    { t: "Azure Data Platform Engineer Case Study Presentation", accent: false },
+  ];
+
+  const footer = document.createElement('div');
+  footer.style.cssText = [
+    'position:fixed', 'bottom:0', 'left:0', 'width:100%',
+    'background:#0A1628', 'border-top:2px solid #028090',
+    'padding:7px 24px', 'display:flex', 'align-items:center',
+    'justify-content:center', 'gap:6px', 'z-index:9999',
+    'user-select:none', '-webkit-user-select:none',
+    '-moz-user-select:none', '-ms-user-select:none',
+    'pointer-events:none'
+  ].join(';');
+
+  segments.forEach(seg => {
+    const span = document.createElement('span');
+    span.style.cssText = seg.accent
+      ? 'color:#028090;font-size:11px;font-weight:700;font-family:Segoe UI,system-ui,sans-serif;letter-spacing:0.3px'
+      : 'color:#7EADB5;font-size:11px;font-family:Segoe UI,system-ui,sans-serif;letter-spacing:0.3px';
+    // Split into individual character spans to defeat drag-select copy
+    seg.t.split('').forEach(ch => {
+      const c = document.createElement('span');
+      c.textContent = ch;
+      span.appendChild(c);
+    });
+    footer.appendChild(span);
+  });
+
+  document.body.appendChild(footer);
+  footer.addEventListener('contextmenu', e => e.preventDefault());
+})();
+</script>
+
+<!-- pad page content so footer never overlaps it -->
+<div style="height:36px"></div>
+
+</body>
+</html>
